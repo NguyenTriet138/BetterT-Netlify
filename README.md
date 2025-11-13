@@ -53,6 +53,8 @@ my-better-t-app/
 │   ├── web/         # Frontend application (React + TanStack Router)
 ├── packages/
 │   ├── backend/     # Convex backend functions and schema
+├── convex/
+│   ├── _generated/     # Convex API and schema
 ```
 
 ## Available Scripts
