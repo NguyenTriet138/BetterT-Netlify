@@ -27,8 +27,13 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2, Trash2, Calendar, Tag, Edit, Plus, AlertCircle } from "lucide-react";
+import { 
+	Loader2, Trash2, Calendar, Tag, Edit, Plus, AlertCircle, 
+	Clock, User, Link as LinkIcon, CheckSquare, Play, Pause, X,
+	CircleDashed, PlayCircle, Eye, CheckCircle2, XCircle
+} from "lucide-react";
 import { useState, useCallback } from "react";
 
 import { useMutation, useQuery } from "convex/react";
@@ -39,14 +44,35 @@ export const Route = createFileRoute("/todos")({
 	component: TodosRoute,
 });
 
-type Priority = "low" | "medium" | "high";
+type Priority = "low" | "medium" | "high" | "urgent";
+type Status = "todo" | "in-progress" | "in-review" | "done" | "cancelled";
+type Category = "work" | "personal" | "shopping" | "health" | "finance" | "learning" | "other";
+
+interface Subtask {
+	id: string;
+	text: string;
+	completed: boolean;
+}
+
+interface Link {
+	url: string;
+	title?: string;
+}
 
 interface TodoFormData {
 	text: string;
 	description?: string;
+	status: Status;
 	priority: Priority;
+	category?: Category;
+	color?: string;
 	dueDate?: number;
+	estimatedMinutes?: number;
+	actualMinutes?: number;
+	assignee?: string;
 	tags?: string[];
+	subtasks?: Subtask[];
+	links?: Link[];
 }
 
 function TodosRoute() {
@@ -56,8 +82,11 @@ function TodosRoute() {
 	const [formData, setFormData] = useState<TodoFormData>({
 		text: "",
 		description: "",
+		status: "todo",
 		priority: "medium",
 		tags: [],
+		subtasks: [],
+		links: [],
 	});
 	const [tagInput, setTagInput] = useState("");
 
@@ -71,8 +100,11 @@ function TodosRoute() {
 		setFormData({
 			text: "",
 			description: "",
+			status: "todo",
 			priority: "medium",
 			tags: [],
+			subtasks: [],
+			links: [],
 		});
 		setTagInput("");
 	};
@@ -84,6 +116,7 @@ function TodosRoute() {
 		await createTodo({
 			text,
 			description: formData.description?.trim() || undefined,
+			status: formData.status,
 			priority: formData.priority,
 			dueDate: formData.dueDate,
 			tags: formData.tags && formData.tags.length > 0 ? formData.tags : undefined,
@@ -101,6 +134,7 @@ function TodosRoute() {
 			id: editingTodoId,
 			text,
 			description: formData.description?.trim() || undefined,
+			status: formData.status,
 			priority: formData.priority,
 			dueDate: formData.dueDate,
 			tags: formData.tags && formData.tags.length > 0 ? formData.tags : undefined,
@@ -115,9 +149,17 @@ function TodosRoute() {
 		setFormData({
 			text: todo.text,
 			description: todo.description || "",
+			status: todo.status || "todo",
 			priority: todo.priority || "medium",
+			category: todo.category,
+			color: todo.color,
 			dueDate: todo.dueDate,
+			estimatedMinutes: todo.estimatedMinutes,
+			actualMinutes: todo.actualMinutes,
+			assignee: todo.assignee,
 			tags: todo.tags || [],
+			subtasks: todo.subtasks || [],
+			links: todo.links || [],
 		});
 		setIsEditDialogOpen(true);
 	};
@@ -142,6 +184,8 @@ function TodosRoute() {
 
 	const getPriorityColor = (priority: Priority) => {
 		switch (priority) {
+			case "urgent":
+				return "destructive";
 			case "high":
 				return "destructive";
 			case "medium":
@@ -161,13 +205,70 @@ function TodosRoute() {
 		return dueDate < Date.now();
 	};
 
-	const handleToggleTodo = (id: Id<"todos">, currentCompleted: boolean) => {
-		toggleTodo({ id, completed: !currentCompleted });
+	const getStatusIcon = (status: Status) => {
+		switch (status) {
+			case "todo":
+				return <CircleDashed className="h-4 w-4" />;
+			case "in-progress":
+				return <PlayCircle className="h-4 w-4" />;
+			case "in-review":
+				return <Eye className="h-4 w-4" />;
+			case "done":
+				return <CheckCircle2 className="h-4 w-4" />;
+			case "cancelled":
+				return <XCircle className="h-4 w-4" />;
+		}
+	};
+
+	const getStatusColor = (status: Status): "secondary" | "default" | "outline" | "destructive" => {
+		switch (status) {
+			case "todo":
+				return "secondary";
+			case "in-progress":
+				return "default";
+			case "in-review":
+				return "outline";
+			case "done":
+				return "default";
+			case "cancelled":
+				return "destructive";
+		}
+	};
+
+	const getStatusLabel = (status: Status) => {
+		switch (status) {
+			case "todo":
+				return "To Do";
+			case "in-progress":
+				return "In Progress";
+			case "in-review":
+				return "In Review";
+			case "done":
+				return "Done";
+			case "cancelled":
+				return "Cancelled";
+		}
+	};
+
+	const handleToggleTodo = (id: Id<"todos">, currentCompleted: boolean, currentStatus?: Status) => {
+		const newCompleted = !currentCompleted;
+		const newStatus: Status = newCompleted ? "done" : "todo";
+		
+		// Update both completed and status
+		updateTodo({ 
+			id, 
+			status: newStatus,
+		});
+		toggleTodo({ id, completed: newCompleted });
 	};
 
 	const handleDeleteTodo = (id: Id<"todos">) => {
 		deleteTodo({ id });
 	};
+
+	const handleStatusChange = useCallback((value: Status) => {
+		setFormData((prev) => ({ ...prev, status: value }));
+	}, []);
 
 	const handleTextChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
 		const newText = e.target.value;
@@ -241,6 +342,25 @@ function TodosRoute() {
 
 									<div className="grid grid-cols-2 gap-4">
 										<div className="space-y-2">
+											<Label htmlFor="add-status">Status</Label>
+											<Select
+												value={formData.status}
+												onValueChange={handleStatusChange}
+											>
+												<SelectTrigger id="add-status">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="todo">To Do</SelectItem>
+													<SelectItem value="in-progress">In Progress</SelectItem>
+													<SelectItem value="in-review">In Review</SelectItem>
+													<SelectItem value="done">Done</SelectItem>
+													<SelectItem value="cancelled">Cancelled</SelectItem>
+												</SelectContent>
+											</Select>
+										</div>
+
+										<div className="space-y-2">
 											<Label htmlFor="add-priority">Priority</Label>
 											<Select
 												value={formData.priority}
@@ -253,10 +373,13 @@ function TodosRoute() {
 													<SelectItem value="low">Low</SelectItem>
 													<SelectItem value="medium">Medium</SelectItem>
 													<SelectItem value="high">High</SelectItem>
+													<SelectItem value="urgent">Urgent</SelectItem>
 												</SelectContent>
 											</Select>
 										</div>
+									</div>
 
+									<div className="grid grid-cols-2 gap-4">
 										<div className="space-y-2">
 											<Label htmlFor="add-dueDate">Due Date</Label>
 											<Input
@@ -330,7 +453,7 @@ function TodosRoute() {
 									<div className="flex items-start gap-3">
 										<Checkbox
 											checked={todo.completed}
-											onCheckedChange={() => handleToggleTodo(todo._id, todo.completed)}
+											onCheckedChange={() => handleToggleTodo(todo._id, todo.completed, todo.status as Status)}
 											id={`todo-${todo._id}`}
 											className="mt-1"
 										/>
@@ -372,6 +495,11 @@ function TodosRoute() {
 											</div>
 
 											<div className="flex flex-wrap items-center gap-2 text-sm">
+												<Badge variant={getStatusColor(todo.status || "todo")} className="flex items-center gap-1">
+													{getStatusIcon(todo.status || "todo")}
+													{getStatusLabel(todo.status || "todo")}
+												</Badge>
+											
 												<Badge variant={getPriorityColor(todo.priority || "medium")}>
 													{todo.priority || "medium"}
 												</Badge>
@@ -445,6 +573,25 @@ function TodosRoute() {
 
 						<div className="grid grid-cols-2 gap-4">
 							<div className="space-y-2">
+								<Label htmlFor="edit-status">Status</Label>
+								<Select
+									value={formData.status}
+									onValueChange={handleStatusChange}
+								>
+									<SelectTrigger id="edit-status">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="todo">To Do</SelectItem>
+										<SelectItem value="in-progress">In Progress</SelectItem>
+										<SelectItem value="in-review">In Review</SelectItem>
+										<SelectItem value="done">Done</SelectItem>
+										<SelectItem value="cancelled">Cancelled</SelectItem>
+									</SelectContent>
+								</Select>
+							</div>
+
+							<div className="space-y-2">
 								<Label htmlFor="edit-priority">Priority</Label>
 								<Select
 									value={formData.priority}
@@ -457,10 +604,13 @@ function TodosRoute() {
 										<SelectItem value="low">Low</SelectItem>
 										<SelectItem value="medium">Medium</SelectItem>
 										<SelectItem value="high">High</SelectItem>
+										<SelectItem value="urgent">Urgent</SelectItem>
 									</SelectContent>
 								</Select>
 							</div>
+						</div>
 
+						<div className="grid grid-cols-2 gap-4">
 							<div className="space-y-2">
 								<Label htmlFor="edit-dueDate">Due Date</Label>
 								<Input
